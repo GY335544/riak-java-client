@@ -26,9 +26,12 @@ import com.basho.riak.client.core.query.Namespace;
 import com.basho.riak.client.core.query.RiakObject;
 import com.basho.riak.client.core.query.indexes.LongIntIndex;
 import com.basho.riak.client.core.util.BinaryValue;
+import com.basho.riak.test.cluster.DockerRiakCluster;
+import com.basho.riak.test.rule.DockerRiakClusterRule;
+import org.apache.commons.lang.StringUtils;
 import org.junit.AfterClass;
-import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.rules.TestName;
 
@@ -42,6 +45,8 @@ import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.*;
 
@@ -78,12 +83,35 @@ public abstract class ITestBase
     @Rule
     public TestName testName = new TestName();
 
+    @ClassRule
+    public static DockerRiakClusterRule dockerCluster = new DockerRiakClusterRule(
+            DockerRiakCluster.builder()
+                    .withBucketType("plain", Collections.<String, String>emptyMap())
+                    .withBucketType("yokozuna", Collections.<String, String>emptyMap())
+                    .withBucketType("mr", Collections.<String, String>emptyMap())
+                    .withBucketType("maps", new HashMap<String, String>() {{
+                        put("allow_mult", "true");
+                        put("datatype", "map");
+                    }})
+                    .withBucketType("sets", new HashMap<String, String>() {{
+                        put("allow_mult", "true");
+                        put("datatype", "set");
+                    }})
+                    .withBucketType("counters", new HashMap<String, String>() {{
+                        put("allow_mult", "true");
+                        put("datatype", "counter");
+                    }})
+                    .withNodes(1)
+                    .withTimeout(1),
+            StringUtils.isNotBlank(System.getProperty("com.basho.riak.host"))
+                    || StringUtils.isNotBlank(System.getProperty("com.basho.riak.pbcport")));
+
     @BeforeClass
     public static void setUp() throws CertificateException, IOException, KeyStoreException,
             NoSuchAlgorithmException
     {
         bucketName = BinaryValue.unsafeCreate("ITestBase".getBytes());
-        
+
         /**
          * Riak security.
          *
@@ -153,7 +181,10 @@ public abstract class ITestBase
          *
          * In case you want/need to use a custom PBC host you may pass it by using the following system property
          */
-        hostname = System.getProperty("com.basho.riak.host", RiakNode.Builder.DEFAULT_REMOTE_ADDRESS);
+        hostname = System.getProperty("com.basho.riak.host",
+                dockerCluster.getIps().iterator().hasNext() // if cluster was not started default host should be used
+                        ? dockerCluster.getIps().iterator().next()
+                        : RiakNode.Builder.DEFAULT_REMOTE_ADDRESS);
 
         /**
          * Riak PBC port
